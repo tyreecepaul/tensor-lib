@@ -1,4 +1,5 @@
 #pragma once
+#include <memory>
 #include <ostream>
 #include <vector>
 
@@ -23,4 +24,6 @@ public:
 
   const std::vector<std::size_t> &shape() const;
   const std::vector<std::size_t> &stride() const;
+
+  std::shared_ptr<Tensor> operator+(const std::shared_ptr<Tensor> &other);
 };
