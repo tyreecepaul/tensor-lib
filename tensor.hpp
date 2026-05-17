@@ -25,5 +25,6 @@ public:
   const std::vector<std::size_t> &shape() const;
   const std::vector<std::size_t> &stride() const;
 
-  std::shared_ptr<Tensor> operator+(const std::shared_ptr<Tensor> &other);
+  std::shared_ptr<Tensor> operator+(std::shared_ptr<Tensor> other);
+  std::shared_ptr<Tensor> operator*(std::shared_ptr<Tensor> other);
 };

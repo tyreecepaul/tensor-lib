@@ -126,8 +126,7 @@ std::ostream &operator<<(std::ostream &os, const Tensor &obj) {
   return os;
 }
 
-std::shared_ptr<Tensor>
-Tensor::operator+(const std::shared_ptr<Tensor> &other) {
+std::shared_ptr<Tensor> Tensor::operator+(std::shared_ptr<Tensor> other) {
   // scalar + scalar
   if (_shape.size() == 0 && other->shape().size() == 0) {
     float res = item() + other->item();
@@ -201,6 +200,73 @@ Tensor::operator+(const std::shared_ptr<Tensor> &other) {
       std::vector<float> res_i;
       for (std::size_t j = 0; j < shape()[1]; j++) {
         res_i.push_back(operator()(i, j) + (*other)(i, j));
+      }
+      res.push_back(res_i);
+    }
+    return std::make_shared<Tensor>(res);
+  }
+}
+
+std::shared_ptr<Tensor> Tensor::operator*(std::shared_ptr<Tensor> other) {
+  if (_shape.size() == 0 || other->shape().size() == 0) {
+    throw std::invalid_argument(
+        "Both arguments need to be at least 1D for matmul");
+  }
+  if (_shape[_shape.size() - 1] != other->shape()[0]) {
+    throw std::invalid_argument("Last dimension of first tensor does not have "
+                                "same size as first dimension of second");
+  }
+
+  // 1D x 1D -> float
+  if (_shape.size() == 1 && other->shape().size() == 1) {
+    float res = 0;
+    for (std::size_t i = 0; i < _shape[0]; i++) {
+      res += operator()(i) * (*other)(i);
+    }
+    return std::make_shared<Tensor>(res);
+  }
+
+  // 2D x 1D -> 1D
+  else if (_shape.size() == 2 && other->shape().size() == 1) {
+    std::vector<float> res;
+    for (std::size_t i = 0; i < _shape[0]; i++) {
+      float res_i = 0.0f;
+      for (std::size_t j = 0; j < _shape[1]; j++) {
+        res_i += operator()(i, j) * (*other)(j);
+      }
+      res.push_back(res_i);
+    }
+    return std::make_shared<Tensor>(res);
+  }
+
+  // 1D x 2D -> 1D
+  else if (_shape.size() == 1 && other->shape().size() == 2) {
+    std::vector<float> res;
+    for (std::size_t i = 0; i < other->shape()[1]; i++) {
+      float res_i = 0.0f;
+      for (std::size_t j = 0; j < other->shape()[0]; j++) {
+        res_i += operator()(j) * (*other)(i, j);
+      }
+      res.push_back(res_i);
+    }
+    return std::make_shared<Tensor>(res);
+  }
+
+  // 2D x 2D -> 2D
+  else {
+    if (other->shape().size() < 2) {
+      throw std::invalid_argument("Expected second tensor to have at least 2 "
+                                  "dimensions for this operation");
+    }
+    std::vector<std::vector<float>> res;
+    for (std::size_t i = 0; i < shape()[0]; i++) {
+      std::vector<float> res_i;
+      for (std::size_t j = 0; j < other->shape()[1]; j++) {
+        float res_i_j = 0.0f;
+        for (std::size_t k = 0; k < shape()[1]; k++) {
+          res_i_j += operator()(i, k) * (*other)(k, j);
+        }
+        res_i.push_back(res_i_j);
       }
       res.push_back(res_i);
     }
