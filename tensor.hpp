@@ -1,6 +1,7 @@
 #pragma once
-#include <memory>
-#include <ostream>
+
+#include <cstddef>
+#include <iostream>
 #include <vector>
 
 class Tensor {
@@ -10,21 +11,26 @@ private:
   std::vector<std::size_t> _stride;
 
 public:
-  Tensor(float data);
+  // constructors
+  Tensor() = default;
+  Tensor(float scalar);
   Tensor(std::vector<float> data);
   Tensor(std::vector<std::vector<float>> data);
-  const float &item() const;
-  float &item();
-  const float &operator()(std::size_t i) const;
+
+  // access
   float &operator()(std::size_t i);
-  const float &operator()(std::size_t i, std::size_t j) const;
   float &operator()(std::size_t i, std::size_t j);
 
-  friend std::ostream &operator<<(std::ostream &os, const Tensor &obj);
+  const float &operator()(std::size_t i) const;
+  const float &operator()(std::size_t i, std::size_t j) const;
 
+  // shape
   const std::vector<std::size_t> &shape() const;
-  const std::vector<std::size_t> &stride() const;
 
-  std::shared_ptr<Tensor> operator+(std::shared_ptr<Tensor> other);
-  std::shared_ptr<Tensor> operator*(std::shared_ptr<Tensor> other);
+  // ops (VALUE SEMANTICS)
+  Tensor operator+(const Tensor &other) const;
+  Tensor operator*(const Tensor &other) const;
+
+  // print
+  friend std::ostream &operator<<(std::ostream &os, const Tensor &t);
 };

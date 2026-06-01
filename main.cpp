@@ -1,24 +1,22 @@
+#include "tensor.hpp"
+#include <chrono>
 #include <iostream>
-#include <vector>
-
-template <typename T> class Matrix {
-private:
-  unsigned rows;
-  unsigned cols;
-  std::vector<T> data;
-  size_t index(unsigned row, unsigned col) const { return row * cols + col; }
-
-public:
-  Matrix(unsigned r, unsigned c, const T &init = T{})
-      : rows(r), cols(c), data(r * c, init) {}
-  T &operator()(unsigned row, unsigned col) { return data[index(row, col)]; }
-  const T &operator()(unsigned row, unsigned col) const {
-    return data[index(row, col)];
-  }
-};
 
 int main() {
-  Matrix<int> m(3, 4, 0);
-  m(1, 2) = 99;
-  std::cout << m(1, 2) << '\n';
-};
+  int N{1024};
+  int ITER{50};
+
+  Tensor A(std::vector<std::vector<float>>(N, std::vector<float>(N, 1.0f)));
+
+  Tensor B(std::vector<std::vector<float>>(N, std::vector<float>(N, 2.0f)));
+
+  auto start = std::chrono::high_resolution_clock::now();
+
+  Tensor C = A * B;
+
+  auto end = std::chrono::high_resolution_clock::now();
+
+  std::chrono::duration<double, std::milli> ms = end - start;
+
+  std::cout << "Time: " << ms.count() << " ms\n";
+}

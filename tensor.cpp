@@ -1,275 +1,139 @@
 #include "tensor.hpp"
-#include <memory>
-#include <ostream>
 #include <stdexcept>
-#include <vector>
+// #include <sstream>
 
-Tensor::Tensor(float data) : _data{data}, _shape{}, _stride{} {};
+// ---------------- constructors ----------------
+
+Tensor::Tensor(float scalar) : _data{scalar}, _shape{}, _stride{} {}
 
 Tensor::Tensor(std::vector<float> data)
-    : _data(data), _shape{data.size()}, _stride{1} {};
+    : _data(std::move(data)), _shape{_data.size()}, _stride{1} {}
 
-Tensor::Tensor(std::vector<std::vector<float>> data)
-    : _shape{data.size(), data[0].size(), 1} {
-  // check if dimensions match
-  std::size_t n_expected_columns = data[0].size();
-  for (std::size_t i = 0; i < data.size(); i++) {
-    if (data[i].size() != n_expected_columns) {
-      throw std::invalid_argument("Dimensions are inconsistent.");
-    }
+Tensor::Tensor(std::vector<std::vector<float>> data) {
+  std::size_t rows = data.size();
+  std::size_t cols = data[0].size();
+
+  for (auto &row : data) {
+    if (row.size() != cols)
+      throw std::invalid_argument("Non-rectangular matrix");
   }
 
-  // store in row major format
-  for (std::size_t i = 0; i < data.size(); i++) {
-    for (std::size_t j = 0; j < data.size(); j++) {
+  _shape = {rows, cols};
+  _stride = {cols, 1};
+
+  _data.reserve(rows * cols);
+
+  for (std::size_t i = 0; i < rows; i++) {
+    for (std::size_t j = 0; j < cols; j++) {
       _data.push_back(data[i][j]);
     }
   }
 }
 
-const float &Tensor::item() const {
-  if (_data.size() == 1) {
-    return _data[0];
-  } else {
-    throw std::runtime_error(
-        "item() can only be called on tensors with a single element");
-  }
-}
+// ---------------- indexing ----------------
 
-const float &Tensor::operator()(std::size_t i) const {
-  if (_shape.size() == 0) {
-    throw std::invalid_argument(
-        "Can't index into a scalar, use item() instead");
-  }
-  if (_shape.size() == 1) {
-    if (i >= _shape[0]) {
-      throw std::invalid_argument("Index " + std::to_string(i) +
-                                  " is out of bounds for array of size " +
-                                  std::to_string(_shape[0]) + " rows");
-    }
-    return _data[i];
-  }
-  throw std::invalid_argument(
-      "This is a 1D tensor. Use two indices for 2D tensors.");
+float &Tensor::operator()(std::size_t i) { return _data[i]; }
+
+const float &Tensor::operator()(std::size_t i) const { return _data[i]; }
+
+float &Tensor::operator()(std::size_t i, std::size_t j) {
+  return _data[i * _stride[0] + j];
 }
 
 const float &Tensor::operator()(std::size_t i, std::size_t j) const {
-  if (_shape.size() == 2) {
-    if (i >= _shape[0]) {
-      throw std::invalid_argument("Row index " + std::to_string(i) +
-                                  "is out of bounds for array of size " +
-                                  std::to_string(_shape[0]) + " rows");
-    }
-    if (j >= _shape[1]) {
-      throw std::invalid_argument("Row index " + std::to_string(i) +
-                                  "is out of bounds for array of size " +
-                                  std::to_string(_shape[0]) + " rows");
-    }
-
-    return _data[i * _stride[0] * j * _stride[1]];
-  }
-  throw std::invalid_argument("Can only double index into 2D tensors");
+  return _data[i * _stride[0] + j];
 }
+
+// ---------------- shape ----------------
 
 const std::vector<std::size_t> &Tensor::shape() const { return _shape; }
 
-const std::vector<std::size_t> &Tensor::stride() const { return _stride; }
+// ---------------- addition ----------------
 
-std::ostream &operator<<(std::ostream &os, const Tensor &obj) {
-  std::string string_repr;
+Tensor Tensor::operator+(const Tensor &other) const {
+  if (_shape != other._shape)
+    throw std::invalid_argument("shape mismatch");
 
-  if (obj.shape().empty()) {
-    os << obj.item();
-    return os;
+  Tensor result;
+  result._shape = _shape;
+  result._stride = _stride;
+  result._data.resize(_data.size());
+
+  for (std::size_t i = 0; i < _data.size(); i++) {
+    result._data[i] = _data[i] + other._data[i];
   }
 
-  // 1D tensor
-  if (obj.shape().size() == 1) {
-    string_repr += "[";
-    for (std::size_t i = 0; i < obj.shape()[0]; i++) {
-      string_repr += std::to_string(obj(i));
-      if (i != obj.shape()[0] - 1) {
-        string_repr += ", ";
+  return result;
+}
+
+// ---------------- matrix multiply ----------------
+
+Tensor Tensor::operator*(const Tensor &other) const {
+  size_t m = _shape[0];
+  size_t K = _shape[1];
+  size_t n = other._shape[1];
+
+  Tensor result;
+  result._shape = {m, n};
+  result._stride = {n, 1};
+  result._data.assign(m * n, 0.0f);
+
+  const float *A = _data.data();
+  const float *B = other._data.data();
+  float *C = result._data.data();
+
+  for (size_t i = 0; i < m; i++) {
+    for (size_t k = 0; k < K; k++) {
+      float a = A[i * K + k];
+
+      size_t bk = k * n;
+      size_t ci = i * n;
+
+      for (size_t j = 0; j < n; j++) {
+        C[ci + j] += a * B[bk + j];
       }
     }
-    string_repr += "]";
-    os << string_repr;
+  }
+
+  return result;
+}
+
+// ---------------- printing ----------------
+
+std::ostream &operator<<(std::ostream &os, const Tensor &t) {
+  if (t._shape.empty()) {
+    os << t._data[0];
     return os;
   }
 
-  // 2D tensor
-  if (obj.shape().size() == 2) {
-    string_repr += "[";
-    for (std::size_t i = 0; i < obj.shape()[0]; i++) {
-      string_repr += "[";
-      for (std::size_t j = 0; j < obj.shape()[1]; j++) {
-        string_repr += std::to_string(obj(i, j));
-        if (j != obj.shape()[1] - 1) {
-          string_repr += ", ";
-        }
-      }
-      string_repr += "]";
-      if (i != obj.shape()[0] - 1) {
-        string_repr += ", ";
-      }
+  if (t._shape.size() == 1) {
+    os << "[";
+    for (std::size_t i = 0; i < t._shape[0]; i++) {
+      os << t(i);
+      if (i + 1 != t._shape[0])
+        os << ", ";
     }
-    string_repr += "]";
-    os << string_repr;
+    os << "]";
     return os;
   }
 
-  // fallback (higher dims not implemented yet)
-  os << "<Tensor shape=";
-  for (auto s : obj.shape())
-    os << s << " ";
-  os << ">";
+  if (t._shape.size() == 2) {
+    os << "[";
+    for (std::size_t i = 0; i < t._shape[0]; i++) {
+      os << "[";
+      for (std::size_t j = 0; j < t._shape[1]; j++) {
+        os << t(i, j);
+        if (j + 1 != t._shape[1])
+          os << ", ";
+      }
+      os << "]";
+      if (i + 1 != t._shape[0])
+        os << ", ";
+    }
+    os << "]";
+    return os;
+  }
+
+  os << "<Tensor>";
   return os;
-}
-
-std::shared_ptr<Tensor> Tensor::operator+(std::shared_ptr<Tensor> other) {
-  // scalar + scalar
-  if (_shape.size() == 0 && other->shape().size() == 0) {
-    float res = item() + other->item();
-    return std::make_shared<Tensor>(res);
-  }
-
-  // scalar + 1D
-  if (_shape.size() == 0 && other->shape().size() == 1) {
-    std::vector<float> res;
-    for (std::size_t i = 0; i < other->shape()[0]; i++) {
-      res.push_back(item() + ((*other)(i)));
-    }
-    return std::make_shared<Tensor>(res);
-  }
-
-  // scalar + 2D
-  if (_shape.size() == 0 && other->shape().size() == 2) {
-    std::vector<std::vector<float>> res;
-    for (std::size_t i = 0; i < other->shape()[0]; i++) {
-      std::vector<float> res_i;
-      for (std::size_t j = 0; j < other->shape()[1]; j++) {
-        res_i.push_back(item() + (*other)(i, j));
-      }
-      res.push_back(res_i);
-    }
-    return std::make_shared<Tensor>(res);
-  }
-
-  // 1D + scalar
-  if (_shape.size() == 1 && other->shape().size() == 0) {
-    std::vector<float> res;
-    for (std::size_t i = 0; i < other->shape()[1]; i++) {
-      res.push_back(operator()(i) + other->item());
-    }
-    return std::make_shared<Tensor>(res);
-  }
-
-  // 2D + scalar
-  if (_shape.size() == 2 && other->shape().size() == 1) {
-    std::vector<std::vector<float>> res;
-    for (std::size_t i = 0; i < other->shape()[0]; i++) {
-      std::vector<float> res_i;
-      for (std::size_t j = 0; j < other->shape()[1]; j++) {
-        res_i.push_back(operator()(i, j) + other->item());
-      }
-      res.push_back(res_i);
-    }
-    return std::make_shared<Tensor>(res);
-  }
-
-  // 1D + 1D
-  if (_shape[0] != other->shape()[0]) {
-    throw std::invalid_argument("First dimensions not equal");
-  }
-
-  if (_shape.size() == 1) {
-    std::vector<float> res;
-    for (std::size_t i = 0; i < shape()[0]; i++) {
-      res.push_back(operator()(i) + (*other)(i));
-    }
-    return std::make_shared<Tensor>(res);
-  }
-
-  // 2D + 2D
-  else {
-    if (shape()[1] != other->shape()[1]) {
-      throw std::invalid_argument("Second dimensions are not equal");
-    }
-    std::vector<std::vector<float>> res;
-    for (std::size_t i = 0; i < shape()[0]; i++) {
-      std::vector<float> res_i;
-      for (std::size_t j = 0; j < shape()[1]; j++) {
-        res_i.push_back(operator()(i, j) + (*other)(i, j));
-      }
-      res.push_back(res_i);
-    }
-    return std::make_shared<Tensor>(res);
-  }
-}
-
-std::shared_ptr<Tensor> Tensor::operator*(std::shared_ptr<Tensor> other) {
-  if (_shape.size() == 0 || other->shape().size() == 0) {
-    throw std::invalid_argument(
-        "Both arguments need to be at least 1D for matmul");
-  }
-  if (_shape[_shape.size() - 1] != other->shape()[0]) {
-    throw std::invalid_argument("Last dimension of first tensor does not have "
-                                "same size as first dimension of second");
-  }
-
-  // 1D x 1D -> float
-  if (_shape.size() == 1 && other->shape().size() == 1) {
-    float res = 0;
-    for (std::size_t i = 0; i < _shape[0]; i++) {
-      res += operator()(i) * (*other)(i);
-    }
-    return std::make_shared<Tensor>(res);
-  }
-
-  // 2D x 1D -> 1D
-  else if (_shape.size() == 2 && other->shape().size() == 1) {
-    std::vector<float> res;
-    for (std::size_t i = 0; i < _shape[0]; i++) {
-      float res_i = 0.0f;
-      for (std::size_t j = 0; j < _shape[1]; j++) {
-        res_i += operator()(i, j) * (*other)(j);
-      }
-      res.push_back(res_i);
-    }
-    return std::make_shared<Tensor>(res);
-  }
-
-  // 1D x 2D -> 1D
-  else if (_shape.size() == 1 && other->shape().size() == 2) {
-    std::vector<float> res;
-    for (std::size_t i = 0; i < other->shape()[1]; i++) {
-      float res_i = 0.0f;
-      for (std::size_t j = 0; j < other->shape()[0]; j++) {
-        res_i += operator()(j) * (*other)(i, j);
-      }
-      res.push_back(res_i);
-    }
-    return std::make_shared<Tensor>(res);
-  }
-
-  // 2D x 2D -> 2D
-  else {
-    if (other->shape().size() < 2) {
-      throw std::invalid_argument("Expected second tensor to have at least 2 "
-                                  "dimensions for this operation");
-    }
-    std::vector<std::vector<float>> res;
-    for (std::size_t i = 0; i < shape()[0]; i++) {
-      std::vector<float> res_i;
-      for (std::size_t j = 0; j < other->shape()[1]; j++) {
-        float res_i_j = 0.0f;
-        for (std::size_t k = 0; k < shape()[1]; k++) {
-          res_i_j += operator()(i, k) * (*other)(k, j);
-        }
-        res_i.push_back(res_i_j);
-      }
-      res.push_back(res_i);
-    }
-    return std::make_shared<Tensor>(res);
-  }
 }
